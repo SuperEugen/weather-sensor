@@ -2,16 +2,17 @@
  * weather-sensor
  * 
  * An outside temperature, humidity and pressure sensor reports data to
- * open weather map. 
+ * a MQTT broker.
  * 
- * created by Ingo Hoffmann,    30. December 2018,  initial tests
+ * created by Ingo Hoffmann,    6. January 2019,  initial tests
  * 
  * Components:
  * BME280:  connects via I2C
  * 
  * Power:
- * powered by a LiFePo4 accu with 1400mAh at 3.2V
+ * powered by a LiFePo4 accu with 1400mAh at 3.3V
  * a 1000 µF capacitor stabilizes the voltage especially during boot
+ * voltage meassured via ADC input with a voltage divider between GND and 
  * 
  * Libraries:
  * WiFi.h             
@@ -43,7 +44,7 @@ const char* mqttVoltageTopic ="weather-sensor/voltage";
 
 // specific constants for this weather sensor
 const int updateIntervalInMinutes = 15;
-const int sensorAltitudeInMeters =  36;
+const int sensorAltitudeInMeters =  55; // 40m at street level + 15m within building
 const float meassuredMultiplier = 3.07;
 
 // MQTT value is a string
@@ -143,6 +144,7 @@ double BME2SealevelhPA(double meassuredValue) {
   return meassuredValue / 100.0F * (pow ((1 - (adjustedAltitude / (bme.readTemperature() + adjustedAltitude + 273.15))), -5.257)) ;
 }
 
+// copied from https://github.com/G6EJD/ESP32-ADC-Accuracy-Improvement-function/blob/master/ESP32_ADC_Read_Voltage_Accurate.ino
 double ReadVoltage(byte pin){
   double reading = analogRead(pin); // Reference voltage is 3v3 so maximum reading is 3v3 = 4095 in range 0 to 4095
   if(reading < 1 || reading > 4095) return 0;
