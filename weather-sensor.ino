@@ -10,7 +10,7 @@
  * BME280:  connects via I2C
  * 
  * Power:
- * powered by a LiFePo4 accu with 1400mAh at 3.3V
+ * powered by a LiFePo4 accu with 1400mAh at 3.2V
  * a 1000 µF capacitor stabilizes the voltage especially during boot
  * voltage meassured via ADC input with a voltage divider between GND and 
  * 
@@ -32,10 +32,6 @@
 // PIN definitions
 #define ADCInputPin 36
 
-// mqtt broker
-const char* mqttBroker = "s-i-nas.fritz.box";
-const int mqttPort = 1883;
-
 // mqtt topics
 const char* mqttTempTopic ="weather-sensor/temp";
 const char* mqttHumidityTopic ="weather-sensor/humidity";
@@ -45,7 +41,6 @@ const char* mqttVoltageTopic ="weather-sensor/voltage";
 // specific constants for this weather sensor
 const int updateIntervalInMinutes = 15;
 const int sensorAltitudeInMeters =  55; // 40m at street level + 15m within building
-const float meassuredMultiplier = 3.07;
 
 // MQTT value is a string
 char* mqttValue;
@@ -57,17 +52,17 @@ PubSubClient mqttClient(wifiClient);
 Adafruit_BME280 bme;
 
 // include either a secrets.h file or put your secrets her
-// const char* ssid      = "your_ssid";
-// const char* password  = "your_WLAN_password";
-// const char* mqttUser = "your_MQTT_user";
-// const char* mqttPassword = "your_MQTT_password";
+// const char* ssid          = "your_ssid";
+// const char* wifiPassword  = "your_WLAN_password";
+// const char* mqttUser      = "your_MQTT_user";
+// const char* mqttPassword  = "your_MQTT_password";
 #include "secrets.h"
 
 void setup() {
   int wifiRetries;
   
   Serial.begin(115200);
-  WiFi.begin(ssid, password);
+  WiFi.begin(ssid, wifiPassword);
 
   while (WiFi.status() != WL_CONNECTED ) {Serial.print(".");delay(500); }
   Serial.println();
@@ -84,7 +79,7 @@ void setup() {
   float temperature = bme.readTemperature();
   float humidity    = bme.readHumidity();
   float pressure    = BME2SealevelhPA(bme.readPressure());
-  float vBat        = ReadVoltage(ADCInputPin) * meassuredMultiplier;
+  float vBat        = analogRead(ADCInputPin) / 4095 * 3.3;
   
   mqttClient.setServer(mqttBroker, mqttPort);
 
@@ -93,10 +88,11 @@ void setup() {
   while (!mqttClient.connected() && wifiRetries < 5) {
     // Attempt to connect
     if (mqttClient.connect(mqttClientID, mqttUser, mqttPassword)) {
-      mqttClient.publish(mqttTempTopic, String(temperature).c_str());
-      mqttClient.publish(mqttHumidityTopic, String(humidity).c_str());
-      mqttClient.publish(mqttPressureTopic, String(pressure).c_str());
-      mqttClient.publish(mqttVoltageTopic, String(vBat).c_str());
+      // MQTT messages with retain flag set
+      mqttClient.publish(mqttTempTopic, String(temperature).c_str(), true);
+      mqttClient.publish(mqttHumidityTopic, String(humidity).c_str(), true);
+      mqttClient.publish(mqttPressureTopic, String(pressure).c_str(), true);
+      mqttClient.publish(mqttVoltageTopic, String(vBat).c_str(), true);
     } else { 
       Serial.print("failed, rc="); 
       Serial.print(mqttClient.state()); 
@@ -142,11 +138,4 @@ double BME2SealevelhPA(double meassuredValue) {
   float adjustedAltitude = sensorAltitudeInMeters * 0.0065; // altitude multiplier
   
   return meassuredValue / 100.0F * (pow ((1 - (adjustedAltitude / (bme.readTemperature() + adjustedAltitude + 273.15))), -5.257)) ;
-}
-
-// copied from https://github.com/G6EJD/ESP32-ADC-Accuracy-Improvement-function/blob/master/ESP32_ADC_Read_Voltage_Accurate.ino
-double ReadVoltage(byte pin){
-  double reading = analogRead(pin); // Reference voltage is 3v3 so maximum reading is 3v3 = 4095 in range 0 to 4095
-  if(reading < 1 || reading > 4095) return 0;
-  return -0.000000000000016 * pow(reading,4) + 0.000000000118171 * pow(reading,3)- 0.000000301211691 * pow(reading,2)+ 0.001109019271794 * reading + 0.034143524634089;
 }
