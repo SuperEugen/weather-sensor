@@ -1,42 +1,49 @@
-/*
- * weather-sensor
- * 
- * An outside temperature, humidity and pressure sensor reports data to
- * a MQTT broker.
- * 
- * created by Ingo Hoffmann,    6. January 2019,  initial tests
- * 
- * Components:
- * BME280:  connects via I2C
- * 
- * Power:
- * powered by a LiFePo4 accu with 1400mAh at 3.2V
- * a 1000 µF capacitor stabilizes the voltage especially during boot
- * voltage meassured via ADC input with a voltage divider between GND and 
- * 
- * Libraries:
- * WiFi.h             
- * Wire.h             Arduino I2C library
- * Adafruit_BME280.h  Adafruit library for the Bosch sensor BME280
- * esp_deep_sleep.h   Espressif library 
- * 
- */
+//***************************************************************************************************
+//  weather-sensor:             An outside temperature, humidity and pressure sensor that reports 
+//                              data via MQTT to broker.
+// 
+//                              By Ingo Hoffmann.
+//***************************************************************************************************
+//
+//  Hardware components:
+//  Board:                      LOLIN D32
+//
+//  Components:
+//    BME280:                   connects via I2C
+//    Power:                    powered by a LiFePo4 accu with 1400mAh at 3.2V
+//                              a 1000 µF capacitor stabilizes the voltage especially during boot
+//
+//  Libraries used:
+//    WiFi                      wifi connection
+//    Wire                      Arduino I2C library
+//    Adafruit_BME280           Adafruit library for the Bosch sensor BME280
+//    esp_wifi                  enables and disables wifi to save energy
+//    PubSubClient              connect to MQTT
+//
+// Dev history:
+//    06.01.2019, IH            initial tests
+//    01.08.2019, IH            battery percentage instead of voltage
+//    12.08.2020, IH            recompiled with updated libraries
+//
+//***************************************************************************************************
 
+#define VERSION                 "1.1"   // 12.08.20
+
+// libraries
 #include <WiFi.h>
 #include <Wire.h>
 #include <Adafruit_BME280.h>
-#include "esp_deep_sleep.h"   // for ESP deep sleep
-#include <esp_wifi.h>         // for WiFi power down
+#include <esp_wifi.h>           // for WiFi power down
 #include <PubSubClient.h>
 
 // PIN definitions
 #define ADCInputPin 36
 
 // mqtt topics
-const char* mqttTempTopic ="weather-sensor/temp";
-const char* mqttHumidityTopic ="weather-sensor/humidity";
-const char* mqttPressureTopic ="weather-sensor/pressure";
-const char* mqttVoltageTopic ="weather-sensor/voltage";
+const char* mqttTempTopic = "weather-sensor/temp";
+const char* mqttHumidityTopic = "weather-sensor/humidity";
+const char* mqttPressureTopic = "weather-sensor/pressure";
+const char* mqttBatteryTopic = "weather-sensor/battery";
 
 // specific constants for this weather sensor
 const int updateIntervalInMinutes = 15;
@@ -44,7 +51,7 @@ const int sensorAltitudeInMeters =  55; // 40m at street level + 15m within buil
 
 // MQTT value is a string
 char* mqttValue;
-char* mqttClientID = "S-I-Wettersensor";
+char* mqttClientID = "S-I-WeatherSensor";
 
 // global object variables
 WiFiClient wifiClient; // wifi client object
@@ -80,7 +87,11 @@ void setup() {
   float humidity    = bme.readHumidity();
   float pressure    = BME2SealevelhPA(bme.readPressure());
   float vBat        = analogRead(ADCInputPin) / 4095 * 3.3;
-  
+
+  // 3.3 volt = 100%, 2.5 volt = 0%
+  float batPercent  = (vBat - 2.5) / 0.8 * 100;
+  if (batPercent < 0) batPercent = 0;
+
   mqttClient.setServer(mqttBroker, mqttPort);
 
   wifiRetries = 0;
@@ -92,7 +103,7 @@ void setup() {
       mqttClient.publish(mqttTempTopic, String(temperature).c_str(), true);
       mqttClient.publish(mqttHumidityTopic, String(humidity).c_str(), true);
       mqttClient.publish(mqttPressureTopic, String(pressure).c_str(), true);
-      mqttClient.publish(mqttVoltageTopic, String(vBat).c_str(), true);
+      mqttClient.publish(mqttBatteryTopic, String(batPercent).c_str(), true);
     } else { 
       Serial.print("failed, rc="); 
       Serial.print(mqttClient.state()); 
@@ -110,14 +121,14 @@ void setup() {
   Serial.println(humidity);
   Serial.print("Pressure:    ");
   Serial.println(pressure);
-  Serial.print("Voltage:     ");
+  Serial.print("Battery:     ");
   Serial.println(vBat);
 */
   delay(50);
 
   BME280_Sleep();
   esp_wifi_stop();
-  esp_deep_sleep_enable_timer_wakeup(updateIntervalInMinutes * 60 * 1000000); // timer value in µ-seconds
+  esp_sleep_enable_timer_wakeup(updateIntervalInMinutes * 60e6);
   esp_deep_sleep_start();
 }
 
